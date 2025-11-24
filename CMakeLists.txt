@@ -22,16 +22,28 @@ set(HEADER_CONTROL_DIR "${CMAKE_SOURCE_DIR}/external/TJ_FX_ROBOT_CONTRL_SDK/cont
 set(LIB_KINE_DIR "${CMAKE_SOURCE_DIR}/external/TJ_FX_ROBOT_CONTRL_SDK/kinematicsSDK/")
 set(LIB_CONTROL_DIR "${CMAKE_SOURCE_DIR}/external/TJ_FX_ROBOT_CONTRL_SDK/demo_linux_win/c++_linux/")
 
+# build controlSDK
+add_custom_command(
+    OUTPUT ${LIB_CONTROL_DIR}/libMarvinSDK.so
+    COMMAND make -f makefile libMarvinSDK.so
+    WORKING_DIRECTORY ${LIB_CONTROL_DIR}
+    COMMENT "Building Marvin SDK with Makefile"
+)
+add_custom_target(build_marvin_sdk ALL DEPENDS ${LIB_CONTROL_DIR}/libMarvinSDK.so)
+
+# # Link to the existing .so library (replace with your actual .so file name and path)
+# find_library(EXTERNAL_KINEMATICSO NAMES "libKine.so" PATHS ${LIB_KINE_DIR} NO_DEFAULT_PATH)
+
 # Link to the existing .so library (replace with your actual .so file name and path)
-find_library(EXTERNAL_KINEMATICSO NAMES "libKine.so" PATHS ${LIB_KINE_DIR} NO_DEFAULT_PATH)
-# Link to the existing .so library (replace with your actual .so file name and path)
-find_library(EXTERNAL_CONTROLSO NAMES "libMarvinSDK.so" PATHS ${LIB_CONTROL_DIR} NO_DEFAULT_PATH)
+find_library(EXTERNAL_CONTROLSO NAMES "libMarvinSDK.so" PATHS ${LIB_CONTROL_DIR} NO_DEFAULT_PATH REQUIRED)
 
 
 # Create library
 add_library(${PROJECT_NAME} SHARED
         src/tj2_hardware.cpp
 )
+
+add_dependencies(${PROJECT_NAME} build_marvin_sdk)
 
 set_target_properties(${PROJECT_NAME} PROPERTIES
     BUILD_RPATH "${LIB_KINE_DIR};${LIB_CONTROL_DIR}"

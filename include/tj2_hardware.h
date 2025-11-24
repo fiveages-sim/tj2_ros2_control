@@ -22,6 +22,13 @@ namespace tj2_ros2_control
       RIGHT_ARM = 1,
       DUAL_ARM = 2
     };
+
+    enum class RobotCtrlMode{
+      POSITION = 2,
+      JOINT_IMPEDANCE = 3,
+      CART_IMPEDANCE = 4,
+    };
+  
 class TJ2Hardware : public hardware_interface::SystemInterface
 {
 public:
@@ -50,6 +57,7 @@ private:
   double read_timeout_;
   double write_timeout_;
   int  robot_arm_left_right_;
+  int  robot_ctrl_mode_;
   int  previous_message_frame_;
   DCSS frame_data_;
   std::shared_ptr<rclcpp::Logger> logger_;
@@ -83,6 +91,8 @@ private:
   void enforceJointLimits();
   bool initializeJointLimits();
   void logJointStates();
+  void setLeftArmCtrl();
+  void setRightArmCtrl();
   
   double degreeToRad(double degree) {
       return degree * M_PI / 180.0;
@@ -92,7 +102,23 @@ private:
     return rad * 180.0 / M_PI;
   };
   
-
+  //
+  // 夹爪参数
+  bool                                  has_gripper_;
+  std::string                    gripper_joint_name_;
+  size_t                        gripper_joint_index_;
+  double                            gripper_position_; 
+  double                            gripper_velocity_;
+  double                            gripper_effort_;
+  double                            gripper_position_command_;
+  double                          last_gripper_command_;
+  bool                             gripper_stopped_ ;
+  bool                             gripper_initilized_;
+  void                              contains_gripper();
+  std::thread gripper_ctrl_thread_;
+  void gripper_callback();
+  bool connect_gripper();
+  void disconnect_gripper();
 
   void splitIPToCharArrays(const char* ipStr, char octet1[4], char octet2[4], char octet3[4], char octet4[4]) {
         sscanf(ipStr, "%3[^.].%3[^.].%3[^.].%3[^.]", octet1, octet2, octet3, octet4);
