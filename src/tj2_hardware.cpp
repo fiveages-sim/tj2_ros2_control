@@ -11,17 +11,17 @@
 #include <string>
 #include "gripper_control.h"
 
-namespace tj2_ros2_control
+namespace marvin_ros2_control
 {
 
-hardware_interface::CallbackReturn TJ2Hardware::on_init(
+hardware_interface::CallbackReturn MarvinHardware::on_init(
   const hardware_interface::HardwareInfo & info)
 {
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Initializing TJ2 Hardware Interface...");
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Initializing TJ2 Hardware Interface...");
 
-  logger_ = std::make_shared<rclcpp::Logger>(rclcpp::get_logger("TJ2Hardware"));
+  logger_ = std::make_shared<rclcpp::Logger>(rclcpp::get_logger("MarvinHardware"));
   clock_ = std::make_shared<rclcpp::Clock>();
-  node_ = rclcpp::Node::make_shared("TJ2Hardware");
+  node_ = rclcpp::Node::make_shared("MarvinHardware");
   node_->declare_parameter<double>("max_velocity", 10.0);
   node_->declare_parameter<double>("max_acceleration", 10.0);
   node_->declare_parameter<bool>("use_drag_mode", false);
@@ -80,12 +80,12 @@ hardware_interface::CallbackReturn TJ2Hardware::on_init(
     hardware_connected_ = false;
     simulation_active_ = false;
     param_callback_handle_ = node_->add_on_set_parameters_callback(
-            std::bind(&TJ2Hardware::paramCallback, this, std::placeholders::_1));
+            std::bind(&MarvinHardware::paramCallback, this, std::placeholders::_1));
     return hardware_interface::CallbackReturn::SUCCESS;
 }
 
 rcl_interfaces::msg::SetParametersResult
-TJ2Hardware::paramCallback(const std::vector<rclcpp::Parameter> & params)
+MarvinHardware::paramCallback(const std::vector<rclcpp::Parameter> & params)
 {
     rcl_interfaces::msg::SetParametersResult result;
     result.successful = true;
@@ -117,7 +117,7 @@ TJ2Hardware::paramCallback(const std::vector<rclcpp::Parameter> & params)
     return result;
 }
 
-void TJ2Hardware::setLeftArmCtrl()
+void MarvinHardware::setLeftArmCtrl()
 {
   /// clear error first
   double kineParam[6] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
@@ -165,7 +165,7 @@ void TJ2Hardware::setLeftArmCtrl()
   usleep(100000);
 }
 
-void TJ2Hardware::setRightArmCtrl()
+void MarvinHardware::setRightArmCtrl()
 {
   /// clear error first
   double kineParam[6] = {0, 0, 0, 0, 0, 0};
@@ -213,19 +213,19 @@ void TJ2Hardware::setRightArmCtrl()
   usleep(100000);
 }
 
-hardware_interface::CallbackReturn TJ2Hardware::on_configure(
+hardware_interface::CallbackReturn MarvinHardware::on_configure(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Configuring TJ2 Hardware Interface...");
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Configuring TJ2 Hardware Interface...");
 
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn TJ2Hardware::on_cleanup(
+hardware_interface::CallbackReturn MarvinHardware::on_cleanup(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Cleaning up TJ2 Hardware Interface...");
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Cleaning up TJ2 Hardware Interface...");
   
   if (hardware_connected_) {
     disconnectFromHardware();
@@ -234,7 +234,7 @@ hardware_interface::CallbackReturn TJ2Hardware::on_cleanup(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-void TJ2Hardware::contains_gripper()
+void MarvinHardware::contains_gripper()
 {
   int joint_index = 0;
   for (const auto& joint : info_.joints) {
@@ -259,13 +259,13 @@ void TJ2Hardware::contains_gripper()
   }
 }
 
-hardware_interface::CallbackReturn TJ2Hardware::on_activate(
+hardware_interface::CallbackReturn MarvinHardware::on_activate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Activating TJ2 Hardware Interface...");
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Activating TJ2 Hardware Interface...");
   simulation_mode_ = false;
   if (simulation_mode_) {
-    RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Running in simulation mode");
+    RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Running in simulation mode");
     simulation_active_ = true;
     
     // Initialize simulation states
@@ -278,16 +278,16 @@ hardware_interface::CallbackReturn TJ2Hardware::on_activate(
     }
     
   } else {
-    RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Running in real hardware mode");
+    RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Running in real hardware mode");
     // Connect to real hardware
     if (!connectToHardware()) {
-      RCLCPP_ERROR(rclcpp::get_logger("TJ2Hardware"), "Failed to connect to TJ2 hardware");
+      RCLCPP_ERROR(rclcpp::get_logger("MarvinHardware"), "Failed to connect to TJ2 hardware");
       return hardware_interface::CallbackReturn::ERROR;
     }
 
     // Read initial joint states from hardware
     if (!readFromHardware(robot_arm_left_right_, true)) {
-      RCLCPP_ERROR(rclcpp::get_logger("TJ2Hardware"), "Failed to read initial joint states from hardware");
+      RCLCPP_ERROR(rclcpp::get_logger("MarvinHardware"), "Failed to read initial joint states from hardware");
       return hardware_interface::CallbackReturn::ERROR;
     }
 
@@ -295,7 +295,7 @@ hardware_interface::CallbackReturn TJ2Hardware::on_activate(
     for (size_t i = 0; i < hw_position_commands_.size(); i++) {
       hw_position_commands_[i] = hw_position_states_[i];
       hw_velocity_commands_[i] = hw_velocity_states_[i];
-      // RCLCPP_ERROR(rclcpp::get_logger("TJ2Hardware"), "initia position ...  %f", hw_velocity_commands_[i]);
+      // RCLCPP_ERROR(rclcpp::get_logger("MarvinHardware"), "initia position ...  %f", hw_velocity_commands_[i]);
     }
   }
   OnClearSet();
@@ -320,10 +320,10 @@ hardware_interface::CallbackReturn TJ2Hardware::on_activate(
   }
   
   OnGetBuf(&frame_data_);
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "current state of A arm:%d\n",frame_data_.m_State[0].m_CurState);
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "cmd state of A arm:%d\n",frame_data_.m_State[0].m_CmdState);
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "error code of A arms:%d\n",frame_data_.m_State[0].m_ERRCode);
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "cmd of vel and acc:%d %d\n",frame_data_.m_In[0].m_Joint_Vel_Ratio,frame_data_.m_In[0].m_Joint_Acc_Ratio);
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "current state of A arm:%d\n",frame_data_.m_State[0].m_CurState);
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "cmd state of A arm:%d\n",frame_data_.m_State[0].m_CmdState);
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "error code of A arms:%d\n",frame_data_.m_State[0].m_ERRCode);
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "cmd of vel and acc:%d %d\n",frame_data_.m_In[0].m_Joint_Vel_Ratio,frame_data_.m_In[0].m_Joint_Acc_Ratio);
   
   // connect to gripper
   if (has_gripper_)
@@ -331,30 +331,30 @@ hardware_interface::CallbackReturn TJ2Hardware::on_activate(
     bool gripper_connected = connect_gripper();
     if (gripper_connected)
     {
-      RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Gripper Connected");
+      RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Gripper Connected");
       // start gripper control thread
-      gripper_ctrl_thread_ = std::thread(&TJ2Hardware::gripper_callback, this);
+      gripper_ctrl_thread_ = std::thread(&MarvinHardware::gripper_callback, this);
       gripper_ctrl_thread_.detach();
       // read once
       // int cur_pos_status = 0;
       // int cur_speed_status = 0;
       // int cur_effort_status = 0;
       // bool success = ZXGripper::ZXGripperStatus(cur_effort_status, cur_speed_status, cur_pos_status, OnClearChDataA);
-      // RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "gripper read position %d", cur_pos_status);
+      // RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "gripper read position %d", cur_pos_status);
       // gripper_position_ = (9000 - cur_pos_status) / 9000.0;
       gripper_position_ = 0.0;
     }
     else
     {
-      RCLCPP_ERROR(rclcpp::get_logger("TJ2Hardware"), "Gripper Not Connected");
+      RCLCPP_ERROR(rclcpp::get_logger("MarvinHardware"), "Gripper Not Connected");
       return hardware_interface::CallbackReturn::ERROR;
     }
   }
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "TJ2 Hardware Interface activated successfully");
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "TJ2 Hardware Interface activated successfully");
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-void TJ2Hardware::gripper_callback()
+void MarvinHardware::gripper_callback()
 {
   while(hardware_connected_)
   {
@@ -365,9 +365,9 @@ void TJ2Hardware::gripper_callback()
     //   int cur_speed_status = 0;
     //   int cur_effort_status = 0;
     //   bool success = ZXGripper::ZXGripperStatus(cur_effort_status, cur_speed_status, cur_pos_status, OnClearChDataA);
-    //   RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "gripper read position %d", cur_pos_status);
+    //   RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "gripper read position %d", cur_pos_status);
     //   gripper_position_ = (9000 - cur_pos_status) / 9000.0;
-    //   RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "gripper position %f", gripper_position_);
+    //   RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "gripper position %f", gripper_position_);
     //   if (gripper_position_ == last_gripper_position_)
     //   {
     //     gripper_stopped_ = true;
@@ -379,11 +379,11 @@ void TJ2Hardware::gripper_callback()
     // }
     if(!gripper_stopped_)
     {
-      //RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "gripper write position %f", step_size_);
+      //RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "gripper write position %f", step_size_);
       gripper_position_ = gripper_position_ + step_size_;
-      //RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "gripper write position %f", gripper_position_);
-      //RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "gripper write position %f", last_gripper_command_);
-      // RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "gripper write position %d", last_gripper_command_ == gripper_position_);
+      //RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "gripper write position %f", gripper_position_);
+      //RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "gripper write position %f", last_gripper_command_);
+      // RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "gripper write position %d", last_gripper_command_ == gripper_position_);
       if (abs(gripper_position_ - last_gripper_command_) < 0.001)
       {
         gripper_stopped_ = true;
@@ -394,12 +394,12 @@ void TJ2Hardware::gripper_callback()
     /// write when the gripper commannd is different
     if (last_gripper_command_ != gripper_position_command_)
     {
-      RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "gripper write position %f", gripper_position_command_);
+      RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "gripper write position %f", gripper_position_command_);
       // write commands to gripper
       int cur_pos_set = 9000 - 9000 * gripper_position_command_;
       int cur_speed_set = 100;
       int cur_effort_set = 100;
-      RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "gripper write position %d", cur_pos_set);
+      RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "gripper write position %d", cur_pos_set);
       bool success = ZXGripper::ZXGripperMove(cur_effort_set, cur_speed_set, cur_pos_set, OnClearChDataA);
       last_gripper_command_ = gripper_position_command_;
       gripper_stopped_ = false;
@@ -410,15 +410,15 @@ void TJ2Hardware::gripper_callback()
   }
 }
 
-bool TJ2Hardware::connect_gripper()
+bool MarvinHardware::connect_gripper()
 {
    return ZXGripper::ZXGripperInit(OnClearChDataA);
 }
 
-hardware_interface::CallbackReturn TJ2Hardware::on_deactivate(
+hardware_interface::CallbackReturn MarvinHardware::on_deactivate(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Deactivating TJ2 Hardware Interface...");
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Deactivating TJ2 Hardware Interface...");
 
   simulation_active_ = false;
   OnClearSet();
@@ -447,10 +447,10 @@ hardware_interface::CallbackReturn TJ2Hardware::on_deactivate(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn TJ2Hardware::on_shutdown(
+hardware_interface::CallbackReturn MarvinHardware::on_shutdown(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Shutting down TJ2 Hardware Interface...");
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Shutting down TJ2 Hardware Interface...");
   
   if (hardware_connected_) {
     disconnectFromHardware();
@@ -459,10 +459,10 @@ hardware_interface::CallbackReturn TJ2Hardware::on_shutdown(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-hardware_interface::CallbackReturn TJ2Hardware::on_error(
+hardware_interface::CallbackReturn MarvinHardware::on_error(
   const rclcpp_lifecycle::State & /*previous_state*/)
 {
-  RCLCPP_ERROR(rclcpp::get_logger("TJ2Hardware"), "Error in TJ2 Hardware Interface");
+  RCLCPP_ERROR(rclcpp::get_logger("MarvinHardware"), "Error in TJ2 Hardware Interface");
   
   // Attempt to safely disconnect from hardware
   if (hardware_connected_) {
@@ -472,12 +472,12 @@ hardware_interface::CallbackReturn TJ2Hardware::on_error(
   return hardware_interface::CallbackReturn::SUCCESS;
 }
 
-std::vector<hardware_interface::StateInterface> TJ2Hardware::export_state_interfaces()
+std::vector<hardware_interface::StateInterface> MarvinHardware::export_state_interfaces()
 {
-  RCLCPP_DEBUG(rclcpp::get_logger("TJ2Hardware"), "Exporting state interfaces for %zu joints", info_.joints.size());
+  RCLCPP_DEBUG(rclcpp::get_logger("MarvinHardware"), "Exporting state interfaces for %zu joints", info_.joints.size());
   std::vector<hardware_interface::StateInterface> state_interfaces;
   int joint_name_sz = joint_names_.size();
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Exporting state interfaces for %zu joints", joint_name_sz);
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Exporting state interfaces for %zu joints", joint_name_sz);
  
   for (size_t i = 0; i < joint_name_sz; i++) {
     state_interfaces.emplace_back(
@@ -522,13 +522,13 @@ std::vector<hardware_interface::StateInterface> TJ2Hardware::export_state_interf
   return state_interfaces;
 }
 
-std::vector<hardware_interface::CommandInterface> TJ2Hardware::export_command_interfaces()
+std::vector<hardware_interface::CommandInterface> MarvinHardware::export_command_interfaces()
 {
-  RCLCPP_DEBUG(rclcpp::get_logger("TJ2Hardware"), "Exporting command interfaces for %zu joints", info_.joints.size());
+  RCLCPP_DEBUG(rclcpp::get_logger("MarvinHardware"), "Exporting command interfaces for %zu joints", info_.joints.size());
 
   std::vector<hardware_interface::CommandInterface> command_interfaces;
   int joint_name_sz = joint_names_.size();
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Exporting command  interfaces for %zu joints", joint_name_sz);
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Exporting command  interfaces for %zu joints", joint_name_sz);
   for (size_t i = 0; i < joint_name_sz; i++) {
     command_interfaces.emplace_back(
       hardware_interface::CommandInterface(
@@ -555,7 +555,7 @@ std::vector<hardware_interface::CommandInterface> TJ2Hardware::export_command_in
   return command_interfaces;
 }
 
-hardware_interface::return_type TJ2Hardware::read(
+hardware_interface::return_type MarvinHardware::read(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & period)
 {
   // if (simulation_active_) {
@@ -565,7 +565,7 @@ hardware_interface::return_type TJ2Hardware::read(
 
   if (!hardware_connected_) {
     // RCLCPP_ERROR_THROTTLE(
-    //   rclcpp::get_logger("TJ2Hardware"), 
+    //   rclcpp::get_logger("MarvinHardware"), 
     //   *std::make_shared<rclcpp::Clock>(), 5000, 
     //   "Not connected to hardware");
     return hardware_interface::return_type::ERROR;
@@ -573,7 +573,7 @@ hardware_interface::return_type TJ2Hardware::read(
 
   if (!readFromHardware(robot_arm_left_right_, false)) {
     // RCLCPP_ERROR_THROTTLE(
-    //   rclcpp::get_logger("TJ2Hardware"), 
+    //   rclcpp::get_logger("MarvinHardware"), 
     //   *std::make_shared<rclcpp::Clock>(), 5000, 
     //   "Failed to read from hardware");
     return hardware_interface::return_type::ERROR;
@@ -582,7 +582,7 @@ hardware_interface::return_type TJ2Hardware::read(
   return hardware_interface::return_type::OK;
 }
 
-hardware_interface::return_type TJ2Hardware::write(
+hardware_interface::return_type MarvinHardware::write(
   const rclcpp::Time & /*time*/, const rclcpp::Duration & /*period*/)
 {
   // if (simulation_active_) {
@@ -594,19 +594,19 @@ hardware_interface::return_type TJ2Hardware::write(
     return hardware_interface::return_type::ERROR;
   }
   /// convert rad to degree
-  // RCLCPP_ERROR(rclcpp::get_logger("TJ2Hardware"), "write command ...  %f", hw_position_commands_[2]);
+  // RCLCPP_ERROR(rclcpp::get_logger("MarvinHardware"), "write command ...  %f", hw_position_commands_[2]);
   std::vector<double> hw_commands;
   for(int i =0; i < hw_position_commands_.size(); i++)
   {
     hw_commands.push_back(radToDegree(hw_position_commands_[i]));
   }
-  // RCLCPP_ERROR(rclcpp::get_logger("TJ2Hardware"), "write command deg ...  %f", hw_position_commands_[2]);
+  // RCLCPP_ERROR(rclcpp::get_logger("MarvinHardware"), "write command deg ...  %f", hw_position_commands_[2]);
   // Enforce joint limits before sending commands
   // enforceJointLimits();  
 
   if (!writeToHardware(robot_arm_left_right_, hw_commands)) {
     RCLCPP_ERROR_THROTTLE(
-      rclcpp::get_logger("TJ2Hardware"),
+      rclcpp::get_logger("MarvinHardware"),
       *clock_, 5000,
       "Failed to write to hardware");
     return hardware_interface::return_type::ERROR;
@@ -614,10 +614,10 @@ hardware_interface::return_type TJ2Hardware::write(
   return hardware_interface::return_type::OK;
 }
 
-bool TJ2Hardware::connectToHardware()
+bool MarvinHardware::connectToHardware()
 {
   device_ip_ = "192.168.1.190";
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Connecting to TJ2 at %s:%d", device_ip_.c_str(), device_port_);
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Connecting to TJ2 at %s:%d", device_ip_.c_str(), device_port_);
   
   // TODO: Implement actual Dobot connection using Dobot SDK
   // Example:
@@ -635,7 +635,7 @@ bool TJ2Hardware::connectToHardware()
   // hardware_connected_ = true;
   if (hardware_connected_)
   {
-    RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Successfully connected to TJ2 hardware");
+    RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Successfully connected to TJ2 hardware");
     usleep(100000);
     OnClearSet();
     OnClearErr_A();
@@ -645,28 +645,28 @@ bool TJ2Hardware::connectToHardware()
   }
   else
   {
-    RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Failed to connect to TJ2 hardware");
+    RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Failed to connect to TJ2 hardware");
   }
   
   return hardware_connected_;
 }
 
-void TJ2Hardware::disconnectFromHardware()
+void MarvinHardware::disconnectFromHardware()
 {
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Disconnecting from Dobot CR5 hardware");
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Disconnecting from Dobot CR5 hardware");
   
   // TODO: Implement actual Dobot disconnection
   OnRelease();
   
   hardware_connected_ = false;
-  RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Disconnected from Dobot CR5 hardware");
+  RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Disconnected from Dobot CR5 hardware");
 }
 
-bool TJ2Hardware::readFromHardware(int robot_arm_left_right_, bool initial_frame)
+bool MarvinHardware::readFromHardware(int robot_arm_left_right_, bool initial_frame)
 {
   
   OnGetBuf(&frame_data_);
-    // RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Reading from hardware interface ... %d", frame_data_.m_Out[robot_arm_left_right_].m_OutFrameSerial);
+    // RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Reading from hardware interface ... %d", frame_data_.m_Out[robot_arm_left_right_].m_OutFrameSerial);
   if (initial_frame)
   {
     previous_message_frame_ = frame_data_.m_Out[robot_arm_left_right_].m_OutFrameSerial;
@@ -701,12 +701,12 @@ bool TJ2Hardware::readFromHardware(int robot_arm_left_right_, bool initial_frame
     }
    else
    {
-        RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "Missing more than 2 frames");
+        RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "Missing more than 2 frames");
         return true;
    }
 }
 
-bool TJ2Hardware::writeToHardware(int robot_arm_left_right, std::vector<double> & hw_commands)
+bool MarvinHardware::writeToHardware(int robot_arm_left_right, std::vector<double> & hw_commands)
 {
   // TODO: Implement actual joint command sending to Dobot
   bool result = true;
@@ -722,15 +722,15 @@ bool TJ2Hardware::writeToHardware(int robot_arm_left_right, std::vector<double> 
   else if (robot_arm_left_right == static_cast<int>(RobotArmConfig::DUAL_ARM))
   {
     result = OnSetJointCmdPos_A(hw_commands.data());
-    // RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "write to left arm %d", result);
+    // RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "write to left arm %d", result);
     result = result && OnSetJointCmdPos_B(hw_commands.data() + 7);
-    // RCLCPP_INFO(rclcpp::get_logger("TJ2Hardware"), "write to right arm %d", result);
+    // RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "write to right arm %d", result);
   }
   OnSetSend();
   return result;
 }
 
-void TJ2Hardware::simulateHardware(const rclcpp::Duration & period)
+void MarvinHardware::simulateHardware(const rclcpp::Duration & period)
 {
   // Simple simulation: move toward commanded position with velocity limits
   for (size_t i = 0; i < hw_position_states_.size(); i++) {
@@ -757,7 +757,7 @@ void TJ2Hardware::simulateHardware(const rclcpp::Duration & period)
   }
 }
 
-void TJ2Hardware::enforceJointLimits()
+void MarvinHardware::enforceJointLimits()
 {
   if (hw_position_commands_.size() != position_lower_limits_.size() || 
       hw_position_commands_.size() != position_upper_limits_.size()) {
@@ -790,7 +790,7 @@ void TJ2Hardware::enforceJointLimits()
   }
 }
 
-bool TJ2Hardware::initializeJointLimits()
+bool MarvinHardware::initializeJointLimits()
 {
   // position_lower_limits_.resize(info_.joints.size());
   // position_upper_limits_.resize(info_.joints.size());
@@ -820,7 +820,7 @@ bool TJ2Hardware::initializeJointLimits()
     effort_limits_[i] = std::stod(joint.command_interfaces[0].max);
     
     RCLCPP_DEBUG(
-      rclcpp::get_logger("TJ2Hardware"),
+      rclcpp::get_logger("MarvinHardware"),
       "Joint %s: pos=[%.3f, %.3f], vel_limit=%.3f, effort_limit=%.3f",
       joint.name.c_str(), position_lower_limits_[i], position_upper_limits_[i],
       velocity_limits_[i], effort_limits_[i]);
@@ -829,7 +829,7 @@ bool TJ2Hardware::initializeJointLimits()
   return true;
 }
 
-void TJ2Hardware::logJointStates()
+void MarvinHardware::logJointStates()
 {
   std::stringstream ss;
   ss << "Joint States - ";
@@ -838,11 +838,11 @@ void TJ2Hardware::logJointStates()
        << ", vel=" << hw_velocity_states_[i] << ", cmd=" << hw_position_commands_[i];
     if (i < hw_position_states_.size() - 1) ss << " | ";
   }
-  RCLCPP_DEBUG(rclcpp::get_logger("TJ2Hardware"), "%s", ss.str().c_str());
+  RCLCPP_DEBUG(rclcpp::get_logger("MarvinHardware"), "%s", ss.str().c_str());
 }
 
-}  // namespace tj2_hardware
+}  // namespace marvin_ros2_control
 
 
-PLUGINLIB_EXPORT_CLASS(tj2_ros2_control::TJ2Hardware, hardware_interface::SystemInterface)
+PLUGINLIB_EXPORT_CLASS(marvin_ros2_control::MarvinHardware, hardware_interface::SystemInterface)
 

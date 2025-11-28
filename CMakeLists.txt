@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.8)
-project(tj2_ros2_control)
+project(marvin_ros2_control)
 
 if (CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     add_compile_options(-Wall -Wextra -Wpedantic)
@@ -85,7 +85,7 @@ target_link_libraries(${PROJECT_NAME}
         rt
 )
 
-pluginlib_export_plugin_description_file(hardware_interface tj2_ros2_control.xml)
+pluginlib_export_plugin_description_file(hardware_interface marvin_ros2_control.xml)
 
 install(
         DIRECTORY include/ 

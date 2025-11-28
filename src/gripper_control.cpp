@@ -5,7 +5,7 @@
 #include <chrono>
 #include <vector>
 
-namespace tj2_ros2_control
+namespace marvin_ros2_control
 {
     bool ZXGripper::acc_set = false;
     bool ZXGripper::deacc_set = false;

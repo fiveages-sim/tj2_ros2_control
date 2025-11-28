@@ -1,5 +1,5 @@
-#ifndef TJ2_HARDWARE__TJ2_HARDWARE_HPP_
-#define TJ2_HARDWARE__TJ2_HARDWARE_HPP_
+#ifndef MARVIN_HARDWARE__MARVIN_HARDWARE_HPP_
+#define MARVIN_HARDWARE__MARVIN_HARDWARE_HPP_
 
 #include <memory>
 #include <string>
@@ -15,7 +15,7 @@
 #include "MarvinSDK.h"
 #include <cmath>
 
-namespace tj2_ros2_control
+namespace marvin_ros2_control
 {
     enum class RobotArmConfig {
       LEFT_ARM = 0,
@@ -29,10 +29,10 @@ namespace tj2_ros2_control
       CART_IMPEDANCE = 4,
     };
   
-class TJ2Hardware : public hardware_interface::SystemInterface
+class MarvinHardware : public hardware_interface::SystemInterface
 {
 public:
-  RCLCPP_SHARED_PTR_DEFINITIONS(TJ2Hardware)
+  RCLCPP_SHARED_PTR_DEFINITIONS(MarvinHardware)
 
   // Hardware interface lifecycle methods
   hardware_interface::CallbackReturn on_init(const hardware_interface::HardwareInfo & info) override;
@@ -130,6 +130,6 @@ private:
     }
 };
 
-}  // namespace tj2_hardware
+}  // namespace marvin_ros2_control
 
-#endif  // TJ2_HARDWARE__TJ2_HARDWARE_HPP_
+#endif  // MARVIN_HARDWARE__MARVIN_HARDWARE_HPP_

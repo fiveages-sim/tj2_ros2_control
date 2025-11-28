@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>tj2_ros2_control</name>
+  <name>marvin_ros2_control</name>
   <version>0.0.0</version>
   <description>tj2 ROS2 Control Hardware Interface</description>
   <maintainer email="rokae@example.com">Rokae Team</maintainer>
@@ -24,6 +24,6 @@
   <export>
     <build_type>ament_cmake</build_type>
     <hardware_interface plugin="${prefix}/dobot_ros2_control.xml"/>
-    <pluginlib_export_plugin_file>tj2_ros2_control_plugin_description.xml</pluginlib_export_plugin_file>
+    <pluginlib_export_plugin_file>marvin_ros2_control_plugin_description.xml</pluginlib_export_plugin_file>
   </export>
 </package>

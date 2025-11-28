@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <string>
 
-namespace tj2_ros2_control
+namespace marvin_ros2_control
 {
     // 将十六进制数据转换为字符串
     inline void hex_to_str(const unsigned char* data, int size, char* output, int output_size) {
