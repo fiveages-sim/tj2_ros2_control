@@ -108,20 +108,21 @@ private:
   //
   // 夹爪参数
   bool                                  has_gripper_;
-  std::string                    gripper_joint_name_;
+  std::vector<std::string>               gripper_joint_name_;
   size_t                        gripper_joint_index_;
-  double                            last_gripper_position_;
-  double                            gripper_position_; 
-  double                            gripper_velocity_;
-  double                            gripper_effort_;
-  double                            gripper_position_command_;
-  double                          last_gripper_command_;
-  bool                             gripper_stopped_ ;
+  std::vector<double>                        last_gripper_position_;
+  std::vector<double>                     gripper_position_; 
+  std::vector<double>                           gripper_velocity_;
+  std::vector<double>                          gripper_effort_;
+  std::vector<double>                           gripper_position_command_;
+  std::vector<double>                         last_gripper_command_;
+  std::vector<bool>                          gripper_stopped_ ;
   bool                             gripper_initilized_;
   void                              contains_gripper();
-  double                              step_size_;
+  std::vector<double>                           step_size_;
   std::thread gripper_ctrl_thread_;
   void gripper_callback();
+  bool recv_thread_func();
   bool connect_gripper();
   void disconnect_gripper();
 

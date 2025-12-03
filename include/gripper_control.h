@@ -48,20 +48,20 @@ namespace marvin_ros2_control
 class ModbusIO {
 public:
     // 读取保持寄存器
-    static std::vector<uint16_t> readHoldingRegisters(uint8_t slaveId, uint16_t startAddr, uint16_t count, bool (*clear_485)());
+    static std::vector<uint16_t> readHoldingRegisters(uint8_t slaveId, uint16_t startAddr, uint16_t count, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch));
     
     // 读取输入寄存器  
-    static std::vector<uint16_t> readInputRegisters(uint8_t slaveId, uint16_t startAddr, uint16_t count, bool (*clear_485)());
+    static std::vector<uint16_t> readInputRegisters(uint8_t slaveId, uint16_t startAddr, uint16_t count, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch));
     
     // 写入单个寄存器
-    static bool writeSingleRegister(uint8_t slaveId, uint16_t registerAddr, uint16_t value, bool (*clear_485)());
+    static bool writeSingleRegister(uint8_t slaveId, uint16_t registerAddr, uint16_t value, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch));
     
     // 写入多个寄存器
-    static bool writeMultipleRegisters(uint8_t slaveId, uint16_t startAddr, const std::vector<uint16_t>& values, std::vector<uint8_t>& response, bool (*clear_485)());
+    static bool writeMultipleRegisters(uint8_t slaveId, uint16_t startAddr, const std::vector<uint16_t>& values, std::vector<uint8_t>& response, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch));
 
     static std::vector<uint8_t> receiveResponse(int limit=20, int timeout = 50);
 private:
-    static bool sendRequest(std::vector<uint8_t>& request, bool (*clear_485)());  // Keep as const
+    static bool sendRequest(std::vector<uint8_t>& request, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch));  // Keep as const
     
     static std::vector<uint8_t> buildRequest(uint8_t slaveId, uint8_t functionCode, const std::vector<uint8_t>& data);
     static uint16_t calculateCRC(const uint8_t* data, size_t length);
@@ -70,9 +70,9 @@ private:
 class ZXGripper
 {
     public:
-        static bool ZXGripperMove(int& trq_set, int& vel_set, int& pos_set, bool (*clear_485)());
-        static bool ZXGripperStatus(int& trq_set, int& vel_set, int& pos_set, bool (*clear_485)());
-        static bool ZXGripperInit(bool (*clear_485)());
+        static bool ZXGripperMove(int& trq_set, int& vel_set, int& pos_set, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch));
+        static bool ZXGripperStatus(int& trq_set, int& vel_set, int& pos_set, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch));
+        static bool ZXGripperInit(bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch));
         static void ZXGripperDeInit();
         
         static bool acc_set;

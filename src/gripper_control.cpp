@@ -10,7 +10,7 @@ namespace marvin_ros2_control
     bool ZXGripper::acc_set = false;
     bool ZXGripper::deacc_set = false;
 
-    std::vector<uint16_t> ModbusIO::readHoldingRegisters(uint8_t slaveId, uint16_t startAddr, uint16_t count, bool (*clear_485)()) {
+    std::vector<uint16_t> ModbusIO::readHoldingRegisters(uint8_t slaveId, uint16_t startAddr, uint16_t count, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
         if (count > 125) count = 125;
         
         std::vector<uint8_t> data = {
@@ -19,7 +19,7 @@ namespace marvin_ros2_control
         };
         
         auto request = buildRequest(slaveId, 0x03, data);
-        if (!sendRequest(request, clear_485)) return {};
+        if (!sendRequest(request, clear_485, send_485_dat)) return {};
         
         auto response = receiveResponse();
         if (response.size() < 5) return {};
@@ -39,7 +39,7 @@ namespace marvin_ros2_control
         return result;
     }
 
-    std::vector<uint16_t> ModbusIO::readInputRegisters(uint8_t slaveId, uint16_t startAddr, uint16_t count, bool (*clear_485)()) {
+    std::vector<uint16_t> ModbusIO::readInputRegisters(uint8_t slaveId, uint16_t startAddr, uint16_t count, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
         if (count > 125) count = 125;
         
         std::vector<uint8_t> data = {
@@ -48,7 +48,7 @@ namespace marvin_ros2_control
         };
         
         auto request = buildRequest(slaveId, 0x04, data);
-        if (!sendRequest(request, clear_485)) return {};
+        if (!sendRequest(request, clear_485, send_485_dat)) return {};
         
         auto response = receiveResponse();
         if (response.size() < 5) return {};
@@ -66,14 +66,14 @@ namespace marvin_ros2_control
         return result;
     }
 
-    bool ModbusIO::writeSingleRegister(uint8_t slaveId, uint16_t registerAddr, uint16_t value, bool (*clear_485)()) {
+    bool ModbusIO::writeSingleRegister(uint8_t slaveId, uint16_t registerAddr, uint16_t value, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
         std::vector<uint8_t> data = {
             (uint8_t)(registerAddr >> 8), (uint8_t)(registerAddr & 0xFF),
             (uint8_t)(value >> 8), (uint8_t)(value & 0xFF)
         };
         
         auto request = buildRequest(slaveId, 0x06, data);
-        if (!sendRequest(request, clear_485)) return false;
+        if (!sendRequest(request, clear_485, send_485_dat)) return false;
         
         // auto response = receiveResponse();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -86,7 +86,7 @@ namespace marvin_ros2_control
         return true;
     }
 
-    bool ModbusIO::writeMultipleRegisters(uint8_t slaveId, uint16_t startAddr, const std::vector<uint16_t>& values, std::vector<uint8_t>& response, bool (*clear_485)()) {
+    bool ModbusIO::writeMultipleRegisters(uint8_t slaveId, uint16_t startAddr, const std::vector<uint16_t>& values, std::vector<uint8_t>& response, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
         if (values.empty() || values.size() > 123) return false;
         
         std::vector<uint8_t> data = {
@@ -101,7 +101,7 @@ namespace marvin_ros2_control
         }
         
         auto request = buildRequest(slaveId, 0x10, data);
-        if (!sendRequest(request, clear_485)) return false;
+        if (!sendRequest(request, clear_485, send_485_dat)) return false;
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         // std::cout << "Sleep for 0.2s" << std::endl;
         // response = receiveResponse();
@@ -109,13 +109,13 @@ namespace marvin_ros2_control
         return true;
     }
 
-    bool ModbusIO::sendRequest(std::vector<uint8_t>& request, bool (*clear_485)()) {
+    bool ModbusIO::sendRequest(std::vector<uint8_t>& request, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
         // Debug output
         char debug_str[512];
         hex_to_str(request.data(), request.size(), debug_str, sizeof(debug_str));
         std::cout << "Sending Modbus request: " << debug_str << std::endl;
         clear_485();
-        return OnSetChDataA(request.data(), request.size(), 2); // COM1
+        return send_485_dat(request.data(), request.size(), 2); // COM1
     }
 
     std::vector<uint8_t> ModbusIO::receiveResponse(int limit, int timeout) {
@@ -171,7 +171,7 @@ namespace marvin_ros2_control
         return crc;
     }
 
-    bool ZXGripper::ZXGripperInit(bool (*clear_485)()) {
+    bool ZXGripper::ZXGripperInit(bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
         // write 01 06 01 00 00 01 49 F6
         // return 01 06 01 00 00 01 49 F6
         uint8_t slave_id = 0x01;
@@ -179,12 +179,12 @@ namespace marvin_ros2_control
         uint16_t value = 0x0001;
         ZXGripper::deacc_set = false;
         ZXGripper::acc_set = false;
-        bool success = ModbusIO::writeSingleRegister(slave_id, slave_add, value, clear_485);
+        bool success = ModbusIO::writeSingleRegister(slave_id, slave_add, value, clear_485, send_485_dat);
         std::cout << "Gripper initialization: " << (success ? "SUCCESS" : "FAILED") << std::endl;
         return success;
     }
 
-    bool ZXGripper::ZXGripperMove(int& trq_set, int& vel_set, int& pos_set, bool (*clear_485)()) {
+    bool ZXGripper::ZXGripperMove(int& trq_set, int& vel_set, int& pos_set, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
         // 01 10 01 02 00 02 04 00 00 00 64 7E 0D 位置
         // 01 06 01 04 00 64 C8 1C 速度
         // 01 06 01 06 07 D0 6B 9B 加速度
@@ -205,15 +205,14 @@ namespace marvin_ros2_control
         bool result = true;
         
         // Write position (multiple registers)
-        clear_485();
-        
         // std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        ModbusIO::receiveResponse(10, 1);
+        // ModbusIO::receiveResponse(10, 1);
         if(!ZXGripper::acc_set)
         {
+            clear_485();
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
-        result = result && ModbusIO::writeMultipleRegisters(slave_id, 0x0102, pos_vec, response, clear_485);
+        result = result && ModbusIO::writeMultipleRegisters(slave_id, 0x0102, pos_vec, response, clear_485, send_485_dat);
         std::cout << "Write position: " << (result ? "SUCCESS" : "FAILED") << std::endl;
         
 
@@ -232,56 +231,56 @@ namespace marvin_ros2_control
         if (!ZXGripper::acc_set)
         {
             // Write acceleration
-            clear_485();
-            ModbusIO::receiveResponse(10, 1);
+            // clear_485();
+            // ModbusIO::receiveResponse(10, 1);
             // std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            result = result && ModbusIO::writeSingleRegister(slave_id, 0x0106, acc, clear_485);
+            result = result && ModbusIO::writeSingleRegister(slave_id, 0x0106, acc, clear_485, send_485_dat);
             std::cout << "Write acceleration: " << (result ? "SUCCESS" : "FAILED") << std::endl;
             ZXGripper::acc_set = true;
 
              // Write velocity
-            clear_485();
-            ModbusIO::receiveResponse(10, 1);
+            //clear_485();
+            // ModbusIO::receiveResponse(10, 1);
             // std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            result = result && ModbusIO::writeSingleRegister(slave_id, 0x0104, vel, clear_485);
+            result = result && ModbusIO::writeSingleRegister(slave_id, 0x0104, vel, clear_485, send_485_dat);
             std::cout << "Write velocity: " << (result ? "SUCCESS" : "FAILED") << std::endl;
             
             
             // Write torque
-            clear_485();
-            ModbusIO::receiveResponse(10, 1);
+            //clear_485();
+            // ModbusIO::receiveResponse(10, 1);
             // std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            result = result && ModbusIO::writeSingleRegister(slave_id, 0x0105, trq, clear_485);
+            result = result && ModbusIO::writeSingleRegister(slave_id, 0x0105, trq, clear_485, send_485_dat);
             std::cout << "Write torque: " << (result ? "SUCCESS" : "FAILED") << std::endl;
         }
 
         if (!ZXGripper::deacc_set)
         {
             // Write deceleration
-            clear_485();
-            ModbusIO::receiveResponse(10, 1);
+            // clear_485();
+            // ModbusIO::receiveResponse(10, 1);
             // std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            result = result && ModbusIO::writeSingleRegister(slave_id, 0x0107, deacc, clear_485);
+            result = result && ModbusIO::writeSingleRegister(slave_id, 0x0107, deacc, clear_485, send_485_dat);
             std::cout << "Write deceleration: " << (result ? "SUCCESS" : "FAILED") << std::endl;
             ZXGripper::deacc_set = true;
         }
         
         // Write trigger
-        clear_485();
-        ModbusIO::receiveResponse(10, 1);
+        // clear_485();
+        // ModbusIO::receiveResponse(10, 1);
         // std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        result = result && ModbusIO::writeSingleRegister(slave_id, 0x0108, trigger, clear_485);
+        result = result && ModbusIO::writeSingleRegister(slave_id, 0x0108, trigger, clear_485, send_485_dat);
         std::cout << "Write trigger: " << (result ? "SUCCESS" : "FAILED") << std::endl;
         return result;
     }
 
-    bool ZXGripper::ZXGripperStatus(int& trq_set, int& vel_set, int& pos_set, bool (*clear_485)()) {
+    bool ZXGripper::ZXGripperStatus(int& trq_set, int& vel_set, int& pos_set, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
         // 01 03 06 09 00 02
         uint8_t slave_id = 0x01;
         uint16_t slave_add = 0x060D;
         uint16_t count = 0x0002;
         
-        std::vector<uint16_t> response = ModbusIO::readHoldingRegisters(slave_id, slave_add, count, clear_485);
+        std::vector<uint16_t> response = ModbusIO::readHoldingRegisters(slave_id, slave_add, count, clear_485, send_485_dat);
         
         bool success = response.size() >= 2;
         if (success) {
