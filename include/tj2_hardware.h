@@ -14,6 +14,7 @@
 #include "rclcpp_lifecycle/state.hpp"
 #include "MarvinSDK.h"
 #include <cmath>
+#include "gripper_control.h"
 
 namespace marvin_ros2_control
 {
@@ -121,6 +122,7 @@ private:
   void                              contains_gripper();
   std::vector<double>                           step_size_;
   std::thread gripper_ctrl_thread_;
+  std::vector<std::unique_ptr<marvin_ros2_control::ModbusGripper>> gripper_ptr_;
   void gripper_callback();
   bool recv_thread_func();
   bool connect_gripper();

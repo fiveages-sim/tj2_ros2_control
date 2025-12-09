@@ -1,306 +1,344 @@
 #include "gripper_control.h"
 #include "MarvinSDK.h"
-#include <iostream>
 #include <thread>
 #include <chrono>
-#include <vector>
+#include <iomanip>
+#include <sstream>
 
 namespace marvin_ros2_control
 {
-    bool ZXGripper::acc_set = false;
-    bool ZXGripper::deacc_set = false;
+    // Initialize static logger
+    rclcpp::Logger ModbusIO::logger_ = rclcpp::get_logger("modbus_io");
+    rclcpp::Logger ModbusGripper::logger_ = rclcpp::get_logger("modbus_gripper");
 
-    std::vector<uint16_t> ModbusIO::readHoldingRegisters(uint8_t slaveId, uint16_t startAddr, uint16_t count, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
-        if (count > 125) count = 125;
-        
-        std::vector<uint8_t> data = {
-            (uint8_t)(startAddr >> 8), (uint8_t)(startAddr & 0xFF),
-            (uint8_t)(count >> 8), (uint8_t)(count & 0xFF)
-        };
-        
-        auto request = buildRequest(slaveId, 0x03, data);
-        if (!sendRequest(request, clear_485, send_485_dat)) return {};
-        
-        auto response = receiveResponse();
-        if (response.size() < 5) return {};
-        
-        // Parse response - FIXED: Proper Modbus response parsing
-        std::vector<uint16_t> result;
-        uint8_t byteCount = response[2];
-        
-        // Modbus response format: [slaveId][funcCode][byteCount][data...][crcLow][crcHigh]
-        for (size_t i = 3; i < 3 + byteCount; i += 2) {
-            if (i + 1 < response.size()) {
-                uint16_t value = (response[i] << 8) | response[i + 1];  // Big-endian
-                result.push_back(value);
+    inline void hex_to_str(const unsigned char* data, int size, char* output, int output_size) {
+            int pos = 0;
+            for (int i = 0; i < size && pos < output_size - 3; i++) {
+                // 每个字节转换为两个十六进制字符
+                sprintf(output + pos, "%02X ", data[i]);
+                pos += 3;
+            }
+            if (pos > 0) {
+                output[pos - 1] = '\0'; // 替换最后一个空格为结束符
+            } else {
+                output[0] = '\0';
             }
         }
+
+// 将十六进制字符串转换为字节数组
+    inline int hex_string_to_bytes(const char* hex_str, unsigned char* bytes, int max_bytes) {
+        int count = 0;
+        char byte_str[3] = {0};
+        const char* pos = hex_str;
+
+        while (*pos && count < max_bytes) {
+            // 跳过空格
+            while (*pos == ' ') pos++;
+            if (!*pos) break;
+
+            // 提取两个字符作为一个字节
+            byte_str[0] = *pos++;
+            if (!*pos) break; // 确保有第二个字符
+            byte_str[1] = *pos++;
+
+            // 转换为字节
+            bytes[count++] = (unsigned char)strtol(byte_str, NULL, 16);
+        }
+
+        return count;
+    }
+
+    // ==============================================
+    // ModbusIO Implementation
+    // ==============================================
+
+    std::vector<uint16_t> ModbusIO::readRegisters(uint8_t slave_id, uint16_t start_addr, 
+                                                 uint16_t count, uint8_t function_code,
+                                                 Clear485Func clear_485, Send485Func send_485) {
+        if (count > MAX_MODBUS_REGISTERS) {
+            count = MAX_MODBUS_REGISTERS;
+            RCLCPP_WARN(logger_, "Limiting count to %zu", MAX_MODBUS_REGISTERS);
+        }
         
+        std::vector<uint8_t> data = {
+            static_cast<uint8_t>(start_addr >> 8),
+            static_cast<uint8_t>(start_addr & 0xFF),
+            static_cast<uint8_t>(count >> 8),
+            static_cast<uint8_t>(count & 0xFF)
+        };
+        
+        auto request = buildRequest(slave_id, function_code, data);
+
+        if (!sendRequest(request, clear_485, send_485)) {
+            RCLCPP_ERROR(logger_, "Failed to send read request");
+            return {};
+        }
+        std::vector<uint16_t> result = {};
         return result;
     }
 
-    std::vector<uint16_t> ModbusIO::readInputRegisters(uint8_t slaveId, uint16_t startAddr, uint16_t count, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
-        if (count > 125) count = 125;
-        
+    bool ModbusIO::writeSingleRegister(uint8_t slave_id, uint16_t register_addr, uint16_t value,
+                                      uint8_t function_code,
+                                      Clear485Func clear_485, Send485Func send_485) {
         std::vector<uint8_t> data = {
-            (uint8_t)(startAddr >> 8), (uint8_t)(startAddr & 0xFF),
-            (uint8_t)(count >> 8), (uint8_t)(count & 0xFF)
+            static_cast<uint8_t>(register_addr >> 8),
+            static_cast<uint8_t>(register_addr & 0xFF),
+            static_cast<uint8_t>(value >> 8),
+            static_cast<uint8_t>(value & 0xFF)
         };
         
-        auto request = buildRequest(slaveId, 0x04, data);
-        if (!sendRequest(request, clear_485, send_485_dat)) return {};
-        
-        auto response = receiveResponse();
-        if (response.size() < 5) return {};
-        
-        std::vector<uint16_t> result;
-        uint8_t byteCount = response[2];
-        
-        for (size_t i = 3; i < 3 + byteCount; i += 2) {
-            if (i + 1 < response.size()) {
-                uint16_t value = (response[i] << 8) | response[i + 1];
-                result.push_back(value);
-            }
+        auto request = buildRequest(slave_id, function_code, data);
+        if (!sendRequest(request, clear_485, send_485)) {
+            RCLCPP_ERROR(logger_, "Failed to write register 0x%04X", register_addr);
+            return false;
         }
         
-        return result;
-    }
-
-    bool ModbusIO::writeSingleRegister(uint8_t slaveId, uint16_t registerAddr, uint16_t value, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
-        std::vector<uint8_t> data = {
-            (uint8_t)(registerAddr >> 8), (uint8_t)(registerAddr & 0xFF),
-            (uint8_t)(value >> 8), (uint8_t)(value & 0xFF)
-        };
-        
-        auto request = buildRequest(slaveId, 0x06, data);
-        if (!sendRequest(request, clear_485, send_485_dat)) return false;
-        
-        // auto response = receiveResponse();
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        // Verify response matches request (echo)
-        // if (response.size() >= 8) {
-        //     // Check if response echoes our request
-        //     return (response[0] == slaveId && response[1] == 0x06);
-        // }
-        // return false;
         return true;
     }
 
-    bool ModbusIO::writeMultipleRegisters(uint8_t slaveId, uint16_t startAddr, const std::vector<uint16_t>& values, std::vector<uint8_t>& response, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
-        if (values.empty() || values.size() > 123) return false;
+    bool ModbusIO::writeMultipleRegisters(uint8_t slave_id, uint16_t start_addr, 
+                                         const std::vector<uint16_t>& values,
+                                         uint8_t function_code,
+                                         Clear485Func clear_485, Send485Func send_485) {
+        if (values.empty() || values.size() > MAX_MODBUS_REGISTERS) {
+            RCLCPP_ERROR(logger_, "Invalid register count: %zu", values.size());
+            return false;
+        }
         
         std::vector<uint8_t> data = {
-            (uint8_t)(startAddr >> 8), (uint8_t)(startAddr & 0xFF),
-            (uint8_t)(values.size() >> 8), (uint8_t)(values.size() & 0xFF),
-            (uint8_t)(values.size() * 2)
+            static_cast<uint8_t>(start_addr >> 8),
+            static_cast<uint8_t>(start_addr & 0xFF),
+            static_cast<uint8_t>(values.size() >> 8),
+            static_cast<uint8_t>(values.size() & 0xFF),
+            static_cast<uint8_t>(values.size() * 2)
         };
         
         for (uint16_t value : values) {
-            data.push_back((uint8_t)(value >> 8));
-            data.push_back((uint8_t)(value & 0xFF));
+            data.push_back(static_cast<uint8_t>(value >> 8));
+            data.push_back(static_cast<uint8_t>(value & 0xFF));
         }
         
-        auto request = buildRequest(slaveId, 0x10, data);
-        if (!sendRequest(request, clear_485, send_485_dat)) return false;
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        // std::cout << "Sleep for 0.2s" << std::endl;
-        // response = receiveResponse();
-        // return response.size() >= 8;
+        auto request = buildRequest(slave_id, function_code, data);
+        if (!sendRequest(request, clear_485, send_485)) {
+            RCLCPP_ERROR(logger_, "Failed to write multiple registers");
+            return false;
+        }
+        
         return true;
     }
 
-    bool ModbusIO::sendRequest(std::vector<uint8_t>& request, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
-        // Debug output
+    bool ModbusIO::sendRequest(const std::vector<uint8_t>& request, 
+                              Clear485Func clear_485, Send485Func send_485) {
         char debug_str[512];
         hex_to_str(request.data(), request.size(), debug_str, sizeof(debug_str));
-        std::cout << "Sending Modbus request: " << debug_str << std::endl;
-        clear_485();
-        return send_485_dat(request.data(), request.size(), 2); // COM1
+        RCLCPP_DEBUG(logger_, "Sending: %s", debug_str);
+        
+        return send_485(const_cast<uint8_t*>(request.data()), 
+                       static_cast<long>(request.size()), 
+                       COM1_CHANNEL);
     }
 
-    std::vector<uint8_t> ModbusIO::receiveResponse(int limit, int timeout) {
-        unsigned char buffer[256];
-        long channel = 2; // COM1
+    std::vector<uint8_t> ModbusIO::receiveResponse(int max_attempts, int timeout_ms) {
+        uint8_t buffer[MAX_BUFFER_SIZE];
         
-        // std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        // Wait for response with timeout
-        for (int i = 0; i < limit; i++) {  // Increased attempts for better reliability
+        for (int attempt = 0; attempt < max_attempts; attempt++) {
+            long channel = COM1_CHANNEL;
             int received = OnGetChDataA(buffer, &channel);
+            
             if (received > 0) {
                 std::vector<uint8_t> response(buffer, buffer + received);
-                
-                // Debug output
-                // char debug_str[512];
-                // hex_to_str(response.data(), response.size(), debug_str, sizeof(debug_str));
-                std::cout << "Received Modbus response: " << received << std::endl;
-                
                 return response;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(timeout));
+            
+            if (attempt < max_attempts - 1) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
+            }
         }
         
-        std::cout << "Modbus response timeout!" << std::endl;
         return {};
     }
 
-    std::vector<uint8_t> ModbusIO::buildRequest(uint8_t slaveId, uint8_t functionCode, const std::vector<uint8_t>& data) {
+    std::vector<uint8_t> ModbusIO::buildRequest(uint8_t slave_id, uint8_t function_code, 
+                                               const std::vector<uint8_t>& data) {
         std::vector<uint8_t> request;
-        request.push_back(slaveId);
-        request.push_back(functionCode);
+        request.reserve(data.size() + 3);
+        
+        request.push_back(slave_id);
+        request.push_back(function_code);
         request.insert(request.end(), data.begin(), data.end());
         
         uint16_t crc = calculateCRC(request.data(), request.size());
-        request.push_back(crc & 0xFF);
-        request.push_back(crc >> 8);
+        request.push_back(static_cast<uint8_t>(crc & 0xFF));
+        request.push_back(static_cast<uint8_t>(crc >> 8));
         
         return request;
     }
 
     uint16_t ModbusIO::calculateCRC(const uint8_t* data, size_t length) {
         uint16_t crc = 0xFFFF;
+        
         for (size_t i = 0; i < length; i++) {
             crc ^= data[i];
+            
             for (int j = 0; j < 8; j++) {
                 if (crc & 0x0001) {
                     crc = (crc >> 1) ^ 0xA001;
                 } else {
-                    crc = crc >> 1;
+                    crc >>= 1;
                 }
             }
         }
+        
         return crc;
     }
 
-    bool ZXGripper::ZXGripperInit(bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
-        // write 01 06 01 00 00 01 49 F6
-        // return 01 06 01 00 00 01 49 F6
-        uint8_t slave_id = 0x01;
-        uint16_t slave_add = 0x0100;
-        uint16_t value = 0x0001;
-        ZXGripper::deacc_set = false;
-        ZXGripper::acc_set = false;
-        bool success = ModbusIO::writeSingleRegister(slave_id, slave_add, value, clear_485, send_485_dat);
-        std::cout << "Gripper initialization: " << (success ? "SUCCESS" : "FAILED") << std::endl;
-        return success;
+    // ==============================================
+    // ZXGripper Implementation
+    // ==============================================
+
+    ZXGripper::ZXGripper() 
+        : acceleration_set_(false), deceleration_set_(false) {
     }
 
-    bool ZXGripper::ZXGripperMove(int& trq_set, int& vel_set, int& pos_set, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
-        // 01 10 01 02 00 02 04 00 00 00 64 7E 0D 位置
-        // 01 06 01 04 00 64 C8 1C 速度
-        // 01 06 01 06 07 D0 6B 9B 加速度
-        // 01 06 01 05 00 64 99 DC 力矩
-        // 01 06 01 07 07 D0 3A 5B 减速
-        // 01 06 01 08 00 01 C8 34 运动触发
+    bool ZXGripper::initialize(Clear485Func clear_485, Send485Func send_485) {
+        acceleration_set_ = false;
+        deceleration_set_ = false;
+        
+        RCLCPP_INFO(logger_, "Initializing ZX Gripper (slave: 0x%02X)", SLAVE_ID);
+        
+        return writeSingleRegister(SLAVE_ID, INIT_REGISTER, INIT_VALUE,
+                                  WRITE_SINGLE_FUNCTION, clear_485, send_485);
+    }
 
-        uint8_t slave_id = 0x01;
-        uint16_t vel = static_cast<uint16_t>(vel_set & 0xFFFF);
-        uint16_t trq = static_cast<uint16_t>(trq_set & 0xFFFF);
-        uint16_t acc = 2000;
-        uint16_t deacc = 2000;
-        uint16_t trigger = 0x0001;
+    bool ZXGripper::move_gripper(int torque, int velocity, int position,
+                        Clear485Func clear_485, Send485Func send_485) {
+        RCLCPP_INFO(logger_, "ZX Gripper moving - pos: %d, vel: %d, trq: %d", 
+                   position, velocity, torque);
         
-        std::vector<uint16_t> pos_vec = {0x0000, static_cast<uint16_t>(pos_set & 0xFFFF)};
+        // Prepare values
+        uint16_t vel_value = static_cast<uint16_t>(velocity & 0xFFFF);
+        uint16_t trq_value = static_cast<uint16_t>(torque & 0xFFFF);
+        uint16_t pos_low = 0x0000;
+        uint16_t pos_high = static_cast<uint16_t>(position & 0xFFFF);
         
-        std::vector<uint8_t> response;
+        std::vector<uint16_t> position_values = {pos_low, pos_high};
+        
         bool result = true;
         
-        // Write position (multiple registers)
-        // std::this_thread::sleep_for(std::chrono::milliseconds(200));
-        // ModbusIO::receiveResponse(10, 1);
-        if(!ZXGripper::acc_set)
-        {
-            clear_485();
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        }
-        result = result && ModbusIO::writeMultipleRegisters(slave_id, 0x0102, pos_vec, response, clear_485, send_485_dat);
-        std::cout << "Write position: " << (result ? "SUCCESS" : "FAILED") << std::endl;
+        // Write position (two registers)
+        result = writeMultipleRegisters(SLAVE_ID, POSITION_REG_LOW, position_values,
+                                       WRITE_MULTIPLE_FUNCTION, clear_485, send_485) && result;
         
-
-        // clear_485();
-        // std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        // result = result && ModbusIO::writeSingleRegister(slave_id, 0x0102, 0x00);
-        // std::cout << "Write position 0: " << (result ? "SUCCESS" : "FAILED") << std::endl;
-        
-
-        // clear_485();
-        // std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        // result = result && ModbusIO::writeSingleRegister(slave_id, 0x0103, static_cast<uint16_t>(pos_set & 0xFFFF));
-        // std::cout << "Write position 1: " << (result ? "SUCCESS" : "FAILED") << std::endl;
-        
-        
-        if (!ZXGripper::acc_set)
-        {
-            // Write acceleration
-            // clear_485();
-            // ModbusIO::receiveResponse(10, 1);
-            // std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            result = result && ModbusIO::writeSingleRegister(slave_id, 0x0106, acc, clear_485, send_485_dat);
-            std::cout << "Write acceleration: " << (result ? "SUCCESS" : "FAILED") << std::endl;
-            ZXGripper::acc_set = true;
-
-             // Write velocity
-            //clear_485();
-            // ModbusIO::receiveResponse(10, 1);
-            // std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            result = result && ModbusIO::writeSingleRegister(slave_id, 0x0104, vel, clear_485, send_485_dat);
-            std::cout << "Write velocity: " << (result ? "SUCCESS" : "FAILED") << std::endl;
+        // Configure acceleration if not set
+        if (!acceleration_set_) {
+            result = writeSingleRegister(SLAVE_ID, ACCELERATION_REG, DEFAULT_ACCELERATION,
+                                        WRITE_SINGLE_FUNCTION, clear_485, send_485) && result;
+            acceleration_set_ = true;
             
+            // Write velocity
+            result = writeSingleRegister(SLAVE_ID, VELOCITY_REG, vel_value,
+                                        WRITE_SINGLE_FUNCTION, clear_485, send_485) && result;
             
             // Write torque
-            //clear_485();
-            // ModbusIO::receiveResponse(10, 1);
-            // std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            result = result && ModbusIO::writeSingleRegister(slave_id, 0x0105, trq, clear_485, send_485_dat);
-            std::cout << "Write torque: " << (result ? "SUCCESS" : "FAILED") << std::endl;
-        }
-
-        if (!ZXGripper::deacc_set)
-        {
-            // Write deceleration
-            // clear_485();
-            // ModbusIO::receiveResponse(10, 1);
-            // std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            result = result && ModbusIO::writeSingleRegister(slave_id, 0x0107, deacc, clear_485, send_485_dat);
-            std::cout << "Write deceleration: " << (result ? "SUCCESS" : "FAILED") << std::endl;
-            ZXGripper::deacc_set = true;
+            result = writeSingleRegister(SLAVE_ID, TORQUE_REG, trq_value,
+                                        WRITE_SINGLE_FUNCTION, clear_485, send_485) && result;
         }
         
-        // Write trigger
-        // clear_485();
-        // ModbusIO::receiveResponse(10, 1);
-        // std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        result = result && ModbusIO::writeSingleRegister(slave_id, 0x0108, trigger, clear_485, send_485_dat);
-        std::cout << "Write trigger: " << (result ? "SUCCESS" : "FAILED") << std::endl;
+        // Configure deceleration if not set
+        if (!deceleration_set_) {
+            result = writeSingleRegister(SLAVE_ID, DECELERATION_REG, DEFAULT_DECELERATION,
+                                        WRITE_SINGLE_FUNCTION, clear_485, send_485) && result;
+            deceleration_set_ = true;
+        }
+        
+        // Trigger movement
+        result = writeSingleRegister(SLAVE_ID, TRIGGER_REG, TRIGGER_VALUE,
+                                    WRITE_SINGLE_FUNCTION, clear_485, send_485) && result;
+        
         return result;
     }
 
-    bool ZXGripper::ZXGripperStatus(int& trq_set, int& vel_set, int& pos_set, bool (*clear_485)(), bool (*send_485_dat)(unsigned char data_ptr[256], long size_int,long set_ch)) {
-        // 01 03 06 09 00 02
-        uint8_t slave_id = 0x01;
-        uint16_t slave_add = 0x060D;
-        uint16_t count = 0x0002;
-        
-        std::vector<uint16_t> response = ModbusIO::readHoldingRegisters(slave_id, slave_add, count, clear_485, send_485_dat);
+    bool ZXGripper::getStatus(int& torque, int& velocity, int& position,
+                             Clear485Func clear_485, Send485Func send_485) {
+        std::vector<uint16_t> response = readRegisters(SLAVE_ID, STATUS_REG, 2,
+                                                      READ_FUNCTION, clear_485, send_485);
         
         bool success = response.size() >= 2;
-        if (success) {
-            // Assuming response[0] is velocity and response[1] is position
-            // Adjust based on actual Modbus register mapping
-            pos_set = response[0] << 16 | response[1];  // Combine two 16-bit registers into 32-bit position
-            vel_set = 0;  // If you have velocity data, set it here
-            trq_set = 0;  // If you have torque data, set it here
-        }
         
-        std::cout << "Gripper status - Position: " << pos_set 
-                  << ", Raw data: " << (response.size() > 0 ? std::to_string(response[0]) : "N/A") 
-                  << ", " << (response.size() > 1 ? std::to_string(response[1]) : "N/A")
-                  << ", Success: " << success << std::endl;
+        if (success) {
+            position = (static_cast<int32_t>(response[0]) << 16) | response[1];
+            velocity = 0;
+            torque = 0;
+        }
         
         return success;
     }
 
-    void ZXGripper::ZXGripperDeInit() {
-        // Clean up if needed
-        // Note: Marvin SDK cleanup should be handled by the main application
+    void ZXGripper::deinitialize() {
+        acceleration_set_ = false;
+        deceleration_set_ = false;
+        RCLCPP_INFO(logger_, "ZX Gripper deinitialized");
+    }
+
+    void ZXGripper::resetState() {
+        acceleration_set_ = false;
+        deceleration_set_ = false;
+    }
+
+    // ==============================================
+    // JDGripper Implementation
+    // ==============================================
+
+    JDGripper::JDGripper() 
+    {
+    }
+
+    bool JDGripper::initialize(Clear485Func clear_485, Send485Func send_485) {
+        
+        RCLCPP_INFO(logger_, "Initializing ZX Gripper (slave: 0x%02X)", SLAVE_ID);
+        std::vector<uint16_t> init_value_vector = {INIT_VALUE};
+        return writeMultipleRegisters(SLAVE_ID, INIT_REGISTER, init_value_vector,
+                                  WRITE_MULTIPLE_FUNCTION, clear_485, send_485);
+    }
+
+    /// input torque is uint8_t
+    /// input velocity is uint8_t
+    /// input position is uint8_t
+    bool JDGripper::move_gripper(int trq_set, int vel_set, int pos_set,
+                        Clear485Func clear_485, Send485Func send_485) {
+        RCLCPP_INFO(logger_, "ZX Gripper moving - pos: %d, vel: %d, trq: %d", 
+                   pos_set, vel_set, trq_set);
+        /// fill in data seciont
+        uint16_t trigger = 0x09;
+	    uint16_t position = pos_set << 8;
+	    uint16_t speed_force = trq_set << 8 | vel_set;
+        std::vector<uint16_t> position_values = {};
+	    position_values.push_back(trigger);
+	    position_values.push_back(position);
+	    position_values.push_back(speed_force);
+        
+        bool result = true;
+        // Write position (two registers)
+        result = writeMultipleRegisters(SLAVE_ID,POSITION_REG,position_values,
+                                       WRITE_MULTIPLE_FUNCTION, clear_485, send_485);
+        
+        return result;
+    }
+
+    bool JDGripper::getStatus(int& torque, int& velocity, int& position,
+                             Clear485Func clear_485, Send485Func send_485) {
+        std::vector<uint16_t> response = readRegisters(SLAVE_ID, STATUS_REG, READ_REG_NUM,
+                                                      READ_FUNCTION, clear_485, send_485);
+        
+        bool success = true;
+        // bool success = response.size() >= 2;
+        
+        // if (success) {
+        //     position = (static_cast<int32_t>(response[0]) << 16) | response[1];
+        //     velocity = 0;
+        //     torque = 0;
+        // }
+        return success;
     }
 }
