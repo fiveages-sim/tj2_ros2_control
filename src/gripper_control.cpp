@@ -52,9 +52,12 @@ namespace marvin_ros2_control
     // ModbusIO Implementation
     // ==============================================
 
+    ModbusIO::ModbusIO(Clear485Func clear_485, Send485Func send_485)
+        : clear_485_(clear_485), send_485_(send_485) {
+    }
+
     std::vector<uint16_t> ModbusIO::readRegisters(uint8_t slave_id, uint16_t start_addr, 
-                                                 uint16_t count, uint8_t function_code,
-                                                 Clear485Func clear_485, Send485Func send_485) {
+                                                 uint16_t count, uint8_t function_code) {
         if (count > MAX_MODBUS_REGISTERS) {
             count = MAX_MODBUS_REGISTERS;
             RCLCPP_WARN(logger_, "Limiting count to %zu", MAX_MODBUS_REGISTERS);
@@ -69,7 +72,7 @@ namespace marvin_ros2_control
         
         auto request = buildRequest(slave_id, function_code, data);
 
-        if (!sendRequest(request, clear_485, send_485)) {
+        if (!sendRequest(request)) {
             RCLCPP_ERROR(logger_, "Failed to send read request");
             return {};
         }
@@ -78,8 +81,7 @@ namespace marvin_ros2_control
     }
 
     bool ModbusIO::writeSingleRegister(uint8_t slave_id, uint16_t register_addr, uint16_t value,
-                                      uint8_t function_code,
-                                      Clear485Func clear_485, Send485Func send_485) {
+                                      uint8_t function_code) {
         std::vector<uint8_t> data = {
             static_cast<uint8_t>(register_addr >> 8),
             static_cast<uint8_t>(register_addr & 0xFF),
@@ -88,7 +90,7 @@ namespace marvin_ros2_control
         };
         
         auto request = buildRequest(slave_id, function_code, data);
-        if (!sendRequest(request, clear_485, send_485)) {
+        if (!sendRequest(request)) {
             RCLCPP_ERROR(logger_, "Failed to write register 0x%04X", register_addr);
             return false;
         }
@@ -99,8 +101,7 @@ namespace marvin_ros2_control
 
     bool ModbusIO::writeMultipleRegisters(uint8_t slave_id, uint16_t start_addr, 
                                          const std::vector<uint16_t>& values,
-                                         uint8_t function_code,
-                                         Clear485Func clear_485, Send485Func send_485) {
+                                         uint8_t function_code) {
         if (values.empty() || values.size() > MAX_MODBUS_REGISTERS) {
             RCLCPP_ERROR(logger_, "Invalid register count: %zu", values.size());
             return false;
@@ -120,7 +121,7 @@ namespace marvin_ros2_control
         }
         
         auto request = buildRequest(slave_id, function_code, data);
-        if (!sendRequest(request, clear_485, send_485)) {
+        if (!sendRequest(request)) {
             RCLCPP_ERROR(logger_, "Failed to write multiple registers");
             return false;
         }
@@ -128,15 +129,12 @@ namespace marvin_ros2_control
         return true;
     }
 
-    bool ModbusIO::sendRequest(const std::vector<uint8_t>& request, 
-                              Clear485Func clear_485, Send485Func send_485) {
+    bool ModbusIO::sendRequest(const std::vector<uint8_t>& request) {
         char debug_str[512];
         hex_to_str(request.data(), request.size(), debug_str, sizeof(debug_str));
         RCLCPP_DEBUG(logger_, "Sending: %s", debug_str);
         
-        return send_485(const_cast<uint8_t*>(request.data()), 
-                       static_cast<long>(request.size()), 
-                       COM1_CHANNEL);
+        return send_485_((uint8_t*)request.data(), static_cast<long>(request.size()), COM1_CHANNEL);
     }
 
     std::vector<uint8_t> ModbusIO::receiveResponse(int max_attempts, int timeout_ms) {
@@ -197,22 +195,21 @@ namespace marvin_ros2_control
     // ZXGripper Implementation
     // ==============================================
 
-    ZXGripper::ZXGripper() 
-        : acceleration_set_(false), deceleration_set_(false) {
+    ZXGripper::ZXGripper(Clear485Func clear_485, Send485Func send_485)
+        : ModbusGripper(clear_485, send_485), acceleration_set_(false), deceleration_set_(false) {
     }
 
-    bool ZXGripper::initialize(Clear485Func clear_485, Send485Func send_485) {
+    bool ZXGripper::initialize() {
         acceleration_set_ = false;
         deceleration_set_ = false;
         
         RCLCPP_INFO(logger_, "Initializing ZX Gripper (slave: 0x%02X)", SLAVE_ID);
         
         return writeSingleRegister(SLAVE_ID, INIT_REGISTER, INIT_VALUE,
-                                  WRITE_SINGLE_FUNCTION, clear_485, send_485);
+                                  WRITE_SINGLE_FUNCTION);
     }
 
-    bool ZXGripper::move_gripper(int torque, int velocity, int position,
-                        Clear485Func clear_485, Send485Func send_485) {
+    bool ZXGripper::move_gripper(int torque, int velocity, int position) {
         RCLCPP_INFO(logger_, "ZX Gripper moving - pos: %d, vel: %d, trq: %d", 
                    position, velocity, torque);
         
@@ -228,41 +225,40 @@ namespace marvin_ros2_control
         
         // Write position (two registers)
         result = writeMultipleRegisters(SLAVE_ID, POSITION_REG_LOW, position_values,
-                                       WRITE_MULTIPLE_FUNCTION, clear_485, send_485) && result;
+                                       WRITE_MULTIPLE_FUNCTION) && result;
         
         // Configure acceleration if not set
         if (!acceleration_set_) {
             result = writeSingleRegister(SLAVE_ID, ACCELERATION_REG, DEFAULT_ACCELERATION,
-                                        WRITE_SINGLE_FUNCTION, clear_485, send_485) && result;
+                                        WRITE_SINGLE_FUNCTION) && result;
             acceleration_set_ = true;
             
             // Write velocity
             result = writeSingleRegister(SLAVE_ID, VELOCITY_REG, vel_value,
-                                        WRITE_SINGLE_FUNCTION, clear_485, send_485) && result;
+                                        WRITE_SINGLE_FUNCTION) && result;
             
             // Write torque
             result = writeSingleRegister(SLAVE_ID, TORQUE_REG, trq_value,
-                                        WRITE_SINGLE_FUNCTION, clear_485, send_485) && result;
+                                        WRITE_SINGLE_FUNCTION) && result;
         }
         
         // Configure deceleration if not set
         if (!deceleration_set_) {
             result = writeSingleRegister(SLAVE_ID, DECELERATION_REG, DEFAULT_DECELERATION,
-                                        WRITE_SINGLE_FUNCTION, clear_485, send_485) && result;
+                                        WRITE_SINGLE_FUNCTION) && result;
             deceleration_set_ = true;
         }
         
         // Trigger movement
         result = writeSingleRegister(SLAVE_ID, TRIGGER_REG, TRIGGER_VALUE,
-                                    WRITE_SINGLE_FUNCTION, clear_485, send_485) && result;
+                                    WRITE_SINGLE_FUNCTION) && result;
         
         return result;
     }
 
-    bool ZXGripper::getStatus(int& torque, int& velocity, int& position,
-                             Clear485Func clear_485, Send485Func send_485) {
+    bool ZXGripper::getStatus(int& torque, int& velocity, int& position) {
         std::vector<uint16_t> response = readRegisters(SLAVE_ID, STATUS_REG, 2,
-                                                      READ_FUNCTION, clear_485, send_485);
+                                                      READ_FUNCTION);
         
         bool success = response.size() >= 2;
         
@@ -290,46 +286,44 @@ namespace marvin_ros2_control
     // JDGripper Implementation
     // ==============================================
 
-    JDGripper::JDGripper() 
-    {
+    JDGripper::JDGripper(Clear485Func clear_485, Send485Func send_485)
+        : ModbusGripper(clear_485, send_485) {
     }
 
-    bool JDGripper::initialize(Clear485Func clear_485, Send485Func send_485) {
+    bool JDGripper::initialize() {
         
         RCLCPP_INFO(logger_, "Initializing ZX Gripper (slave: 0x%02X)", SLAVE_ID);
         std::vector<uint16_t> init_value_vector = {INIT_VALUE};
         return writeMultipleRegisters(SLAVE_ID, INIT_REGISTER, init_value_vector,
-                                  WRITE_MULTIPLE_FUNCTION, clear_485, send_485);
+                                  WRITE_MULTIPLE_FUNCTION);
     }
 
     /// input torque is uint8_t
     /// input velocity is uint8_t
     /// input position is uint8_t
-    bool JDGripper::move_gripper(int trq_set, int vel_set, int pos_set,
-                        Clear485Func clear_485, Send485Func send_485) {
+    bool JDGripper::move_gripper(int trq_set, int vel_set, int pos_set) {
         RCLCPP_INFO(logger_, "ZX Gripper moving - pos: %d, vel: %d, trq: %d", 
                    pos_set, vel_set, trq_set);
         /// fill in data seciont
         uint16_t trigger = 0x09;
-	    uint16_t position = pos_set << 8;
-	    uint16_t speed_force = trq_set << 8 | vel_set;
+        uint16_t position = pos_set << 8;
+        uint16_t speed_force = trq_set << 8 | vel_set;
         std::vector<uint16_t> position_values = {};
-	    position_values.push_back(trigger);
-	    position_values.push_back(position);
-	    position_values.push_back(speed_force);
+        position_values.push_back(trigger);
+        position_values.push_back(position);
+        position_values.push_back(speed_force);
         
         bool result = true;
         // Write position (two registers)
         result = writeMultipleRegisters(SLAVE_ID,POSITION_REG,position_values,
-                                       WRITE_MULTIPLE_FUNCTION, clear_485, send_485);
+                                       WRITE_MULTIPLE_FUNCTION);
         
         return result;
     }
 
-    bool JDGripper::getStatus(int& torque, int& velocity, int& position,
-                             Clear485Func clear_485, Send485Func send_485) {
+    bool JDGripper::getStatus(int& torque, int& velocity, int& position) {
         std::vector<uint16_t> response = readRegisters(SLAVE_ID, STATUS_REG, READ_REG_NUM,
-                                                      READ_FUNCTION, clear_485, send_485);
+                                                      READ_FUNCTION);
         
         bool success = true;
         // bool success = response.size() >= 2;

@@ -86,7 +86,14 @@ hardware_interface::CallbackReturn MarvinHardware::on_init(
         step_size_ = {0.0};
         gripper_ptr_.reserve(1);
         // std::unique_ptr<marvin_ros2_control::ModbusGripper> gripper_ptr = std::make_unique<marvin_ros2_control::JDGripper>();
-        gripper_ptr_.emplace_back(std::make_unique<marvin_ros2_control::JDGripper>());
+        if (robot_arm_left_right_ == static_cast<int>(RobotArmConfig::LEFT_ARM))
+        {
+          gripper_ptr_.emplace_back(std::make_unique<marvin_ros2_control::JDGripper>(OnClearChDataA, OnSetChDataA));
+        }
+        else
+        {
+          gripper_ptr_.emplace_back(std::make_unique<marvin_ros2_control::JDGripper>(OnClearChDataB, OnSetChDataB));
+        }
       }
       else if(robot_arm_left_right_ == static_cast<int>(RobotArmConfig::DUAL_ARM))
       {
@@ -104,8 +111,8 @@ hardware_interface::CallbackReturn MarvinHardware::on_init(
         //gripper_ptr_.push_back(std::move(left_gripper));
         //gripper_ptr_.push_back(std::move(right_gripper));
         gripper_ptr_.reserve(2);
-        gripper_ptr_.emplace_back(std::make_unique<marvin_ros2_control::JDGripper>());
-        gripper_ptr_.emplace_back(std::make_unique<marvin_ros2_control::JDGripper>());
+        gripper_ptr_.emplace_back(std::make_unique<marvin_ros2_control::JDGripper>(OnClearChDataA, OnSetChDataA));
+        gripper_ptr_.emplace_back(std::make_unique<marvin_ros2_control::JDGripper>(OnClearChDataB, OnSetChDataB));
       }
     } 
     
@@ -285,7 +292,7 @@ void MarvinHardware::contains_gripper()
             RCLCPP_INFO(get_node()->get_logger(), "Detected gripper joint: %s (index %d)", 
                        joint.name.c_str(), gripper_joint_index_);
         } else {
-            // 这是机械臂关节
+            // 这是机械臂关节gripper
             joint_names_.push_back(joint.name);
         }
         joint_index++;
@@ -371,7 +378,7 @@ hardware_interface::CallbackReturn MarvinHardware::on_activate(
       gripper_ctrl_thread_.detach();
       std::thread recv_thread(&MarvinHardware::recv_thread_func, this);
       recv_thread.detach();
-      // read once
+      // read onceon_activateon_activate
       // int cur_pos_status = 0;
       // int cur_speed_status = 0;
       // int cur_effort_status = 0;
@@ -439,11 +446,11 @@ void MarvinHardware::gripper_callback()
       {
         RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "gripper %d write position %f", i, gripper_position_command_[i]);
         // write commands to gripper
-        int cur_pos_set = 9000 - 9000 * gripper_position_command_[i];
+        int cur_pos_set = 256 - 256 * gripper_position_command_[i];
         int cur_speed_set = 100;
         int cur_effort_set = 100;
         RCLCPP_INFO(rclcpp::get_logger("MarvinHardware"), "gripper write position %d", cur_pos_set);
-        success = gripper_ptr_[i]->move_gripper(cur_effort_set, cur_speed_set, cur_pos_set, OnClearChDataA, OnSetChDataA);
+        success = gripper_ptr_[i]->move_gripper(cur_effort_set, cur_speed_set, cur_pos_set);
         last_gripper_command_[i] = gripper_position_command_[i];
         gripper_stopped_[i]= false;
         step_size_[i]= (last_gripper_command_[i] - gripper_position_[i]) / 10.0;
@@ -459,7 +466,7 @@ bool MarvinHardware::connect_gripper()
    bool result = true;
    for(int i =0; i < gripper_ptr_.size(); i++)
    {
-      result = result && gripper_ptr_[i]->initialize(OnClearChDataA, OnSetChDataA);
+      result = result && gripper_ptr_[i]->initialize();
    }
    return result;
 }
