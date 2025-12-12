@@ -11,27 +11,34 @@ namespace marvin_ros2_control
     rclcpp::Logger ModbusIO::logger_ = rclcpp::get_logger("modbus_io");
     rclcpp::Logger ModbusGripper::logger_ = rclcpp::get_logger("modbus_gripper");
 
-    inline void hex_to_str(const unsigned char* data, int size, char* output, int output_size) {
-            int pos = 0;
-            for (int i = 0; i < size && pos < output_size - 3; i++) {
-                // 每个字节转换为两个十六进制字符
-                sprintf(output + pos, "%02X ", data[i]);
-                pos += 3;
-            }
-            if (pos > 0) {
-                output[pos - 1] = '\0'; // 替换最后一个空格为结束符
-            } else {
-                output[0] = '\0';
-            }
+    inline void hex_to_str(const unsigned char* data, int size, char* output, int output_size)
+    {
+        int pos = 0;
+        for (int i = 0; i < size && pos < output_size - 3; i++)
+        {
+            // 每个字节转换为两个十六进制字符
+            sprintf(output + pos, "%02X ", data[i]);
+            pos += 3;
         }
+        if (pos > 0)
+        {
+            output[pos - 1] = '\0'; // 替换最后一个空格为结束符
+        }
+        else
+        {
+            output[0] = '\0';
+        }
+    }
 
-// 将十六进制字符串转换为字节数组
-    inline int hex_string_to_bytes(const char* hex_str, unsigned char* bytes, int max_bytes) {
+    // 将十六进制字符串转换为字节数组
+    inline int hex_string_to_bytes(const char* hex_str, unsigned char* bytes, int max_bytes)
+    {
         int count = 0;
         char byte_str[3] = {0};
         const char* pos = hex_str;
 
-        while (*pos && count < max_bytes) {
+        while (*pos && count < max_bytes)
+        {
             // 跳过空格
             while (*pos == ' ') pos++;
             if (!*pos) break;
@@ -53,26 +60,30 @@ namespace marvin_ros2_control
     // ==============================================
 
     ModbusIO::ModbusIO(Clear485Func clear_485, Send485Func send_485)
-        : clear_485_(clear_485), send_485_(send_485) {
+        : clear_485_(clear_485), send_485_(send_485)
+    {
     }
 
-    std::vector<uint16_t> ModbusIO::readRegisters(uint8_t slave_id, uint16_t start_addr, 
-                                                 uint16_t count, uint8_t function_code) {
-        if (count > MAX_MODBUS_REGISTERS) {
+    std::vector<uint16_t> ModbusIO::readRegisters(uint8_t slave_id, uint16_t start_addr,
+                                                  uint16_t count, uint8_t function_code)
+    {
+        if (count > MAX_MODBUS_REGISTERS)
+        {
             count = MAX_MODBUS_REGISTERS;
             RCLCPP_WARN(logger_, "Limiting count to %zu", MAX_MODBUS_REGISTERS);
         }
-        
+
         std::vector<uint8_t> data = {
             static_cast<uint8_t>(start_addr >> 8),
             static_cast<uint8_t>(start_addr & 0xFF),
             static_cast<uint8_t>(count >> 8),
             static_cast<uint8_t>(count & 0xFF)
         };
-        
+
         auto request = buildRequest(slave_id, function_code, data);
 
-        if (!sendRequest(request)) {
+        if (!sendRequest(request))
+        {
             RCLCPP_ERROR(logger_, "Failed to send read request");
             return {};
         }
@@ -81,32 +92,36 @@ namespace marvin_ros2_control
     }
 
     bool ModbusIO::writeSingleRegister(uint8_t slave_id, uint16_t register_addr, uint16_t value,
-                                      uint8_t function_code) {
+                                       uint8_t function_code)
+    {
         std::vector<uint8_t> data = {
             static_cast<uint8_t>(register_addr >> 8),
             static_cast<uint8_t>(register_addr & 0xFF),
             static_cast<uint8_t>(value >> 8),
             static_cast<uint8_t>(value & 0xFF)
         };
-        
+
         auto request = buildRequest(slave_id, function_code, data);
-        if (!sendRequest(request)) {
+        if (!sendRequest(request))
+        {
             RCLCPP_ERROR(logger_, "Failed to write register 0x%04X", register_addr);
             return false;
         }
-        
+
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         return true;
     }
 
-    bool ModbusIO::writeMultipleRegisters(uint8_t slave_id, uint16_t start_addr, 
-                                         const std::vector<uint16_t>& values,
-                                         uint8_t function_code) {
-        if (values.empty() || values.size() > MAX_MODBUS_REGISTERS) {
+    bool ModbusIO::writeMultipleRegisters(uint8_t slave_id, uint16_t start_addr,
+                                          const std::vector<uint16_t>& values,
+                                          uint8_t function_code)
+    {
+        if (values.empty() || values.size() > MAX_MODBUS_REGISTERS)
+        {
             RCLCPP_ERROR(logger_, "Invalid register count: %zu", values.size());
             return false;
         }
-        
+
         std::vector<uint8_t> data = {
             static_cast<uint8_t>(start_addr >> 8),
             static_cast<uint8_t>(start_addr & 0xFF),
@@ -114,80 +129,94 @@ namespace marvin_ros2_control
             static_cast<uint8_t>(values.size() & 0xFF),
             static_cast<uint8_t>(values.size() * 2)
         };
-        
-        for (uint16_t value : values) {
+
+        for (uint16_t value : values)
+        {
             data.push_back(static_cast<uint8_t>(value >> 8));
             data.push_back(static_cast<uint8_t>(value & 0xFF));
         }
-        
+
         auto request = buildRequest(slave_id, function_code, data);
-        if (!sendRequest(request)) {
+        if (!sendRequest(request))
+        {
             RCLCPP_ERROR(logger_, "Failed to write multiple registers");
             return false;
         }
-        
+
         return true;
     }
 
-    bool ModbusIO::sendRequest(const std::vector<uint8_t>& request) {
+    bool ModbusIO::sendRequest(const std::vector<uint8_t>& request)
+    {
         char debug_str[512];
         hex_to_str(request.data(), request.size(), debug_str, sizeof(debug_str));
         RCLCPP_DEBUG(logger_, "Sending: %s", debug_str);
-        
+
         return send_485_((uint8_t*)request.data(), static_cast<long>(request.size()), COM1_CHANNEL);
     }
 
-    std::vector<uint8_t> ModbusIO::receiveResponse(int max_attempts, int timeout_ms) {
+    std::vector<uint8_t> ModbusIO::receiveResponse(int max_attempts, int timeout_ms)
+    {
         uint8_t buffer[MAX_BUFFER_SIZE];
-        
-        for (int attempt = 0; attempt < max_attempts; attempt++) {
+
+        for (int attempt = 0; attempt < max_attempts; attempt++)
+        {
             long channel = COM1_CHANNEL;
             int received = OnGetChDataA(buffer, &channel);
-            
-            if (received > 0) {
+
+            if (received > 0)
+            {
                 std::vector<uint8_t> response(buffer, buffer + received);
                 return response;
             }
-            
-            if (attempt < max_attempts - 1) {
+
+            if (attempt < max_attempts - 1)
+            {
                 std::this_thread::sleep_for(std::chrono::milliseconds(timeout_ms));
             }
         }
-        
+
         return {};
     }
 
-    std::vector<uint8_t> ModbusIO::buildRequest(uint8_t slave_id, uint8_t function_code, 
-                                               const std::vector<uint8_t>& data) {
+    std::vector<uint8_t> ModbusIO::buildRequest(uint8_t slave_id, uint8_t function_code,
+                                                const std::vector<uint8_t>& data)
+    {
         std::vector<uint8_t> request;
         request.reserve(data.size() + 3);
-        
+
         request.push_back(slave_id);
         request.push_back(function_code);
         request.insert(request.end(), data.begin(), data.end());
-        
+
         uint16_t crc = calculateCRC(request.data(), request.size());
         request.push_back(static_cast<uint8_t>(crc & 0xFF));
         request.push_back(static_cast<uint8_t>(crc >> 8));
-        
+
         return request;
     }
 
-    uint16_t ModbusIO::calculateCRC(const uint8_t* data, size_t length) {
+    uint16_t ModbusIO::calculateCRC(const uint8_t* data, size_t length)
+    {
         uint16_t crc = 0xFFFF;
-        
-        for (size_t i = 0; i < length; i++) {
+
+        for (size_t i = 0; i < length; i++)
+        {
             crc ^= data[i];
-            
-            for (int j = 0; j < 8; j++) {
-                if (crc & 0x0001) {
+
+            for (int j = 0; j < 8; j++)
+            {
+                if (crc & 0x0001)
+                {
                     crc = (crc >> 1) ^ 0xA001;
-                } else {
+                }
+                else
+                {
                     crc >>= 1;
                 }
             }
         }
-        
+
         return crc;
     }
 
@@ -196,88 +225,97 @@ namespace marvin_ros2_control
     // ==============================================
 
     ZXGripper::ZXGripper(Clear485Func clear_485, Send485Func send_485)
-        : ModbusGripper(clear_485, send_485), acceleration_set_(false), deceleration_set_(false) {
+        : ModbusGripper(clear_485, send_485), acceleration_set_(false), deceleration_set_(false)
+    {
     }
 
-    bool ZXGripper::initialize() {
+    bool ZXGripper::initialize()
+    {
         acceleration_set_ = false;
         deceleration_set_ = false;
-        
+
         RCLCPP_INFO(logger_, "Initializing ZX Gripper (slave: 0x%02X)", SLAVE_ID);
-        
+
         return writeSingleRegister(SLAVE_ID, INIT_REGISTER, INIT_VALUE,
-                                  WRITE_SINGLE_FUNCTION);
+                                   WRITE_SINGLE_FUNCTION);
     }
 
-    bool ZXGripper::move_gripper(int torque, int velocity, int position) {
-        RCLCPP_INFO(logger_, "ZX Gripper moving - pos: %d, vel: %d, trq: %d", 
-                   position, velocity, torque);
-        
+    bool ZXGripper::move_gripper(int torque, int velocity, int position)
+    {
+        RCLCPP_INFO(logger_, "ZX Gripper moving - pos: %d, vel: %d, trq: %d",
+                    position, velocity, torque);
+
         // Prepare values
         uint16_t vel_value = static_cast<uint16_t>(velocity & 0xFFFF);
         uint16_t trq_value = static_cast<uint16_t>(torque & 0xFFFF);
         uint16_t pos_low = 0x0000;
         uint16_t pos_high = static_cast<uint16_t>(position & 0xFFFF);
-        
-        std::vector<uint16_t> position_values = {pos_low, pos_high};
-        
+
+        std::vector position_values = {pos_low, pos_high};
+
         bool result = true;
-        
+
         // Write position (two registers)
         result = writeMultipleRegisters(SLAVE_ID, POSITION_REG_LOW, position_values,
-                                       WRITE_MULTIPLE_FUNCTION) && result;
-        
+                                        WRITE_MULTIPLE_FUNCTION) && result;
+
         // Configure acceleration if not set
-        if (!acceleration_set_) {
+        if (!acceleration_set_)
+        {
             result = writeSingleRegister(SLAVE_ID, ACCELERATION_REG, DEFAULT_ACCELERATION,
-                                        WRITE_SINGLE_FUNCTION) && result;
+                                         WRITE_SINGLE_FUNCTION) && result;
             acceleration_set_ = true;
-            
+
             // Write velocity
             result = writeSingleRegister(SLAVE_ID, VELOCITY_REG, vel_value,
-                                        WRITE_SINGLE_FUNCTION) && result;
-            
+                                         WRITE_SINGLE_FUNCTION) && result;
+
             // Write torque
             result = writeSingleRegister(SLAVE_ID, TORQUE_REG, trq_value,
-                                        WRITE_SINGLE_FUNCTION) && result;
+                                         WRITE_SINGLE_FUNCTION) && result;
         }
-        
+
         // Configure deceleration if not set
-        if (!deceleration_set_) {
+        if (!deceleration_set_)
+        {
             result = writeSingleRegister(SLAVE_ID, DECELERATION_REG, DEFAULT_DECELERATION,
-                                        WRITE_SINGLE_FUNCTION) && result;
+                                         WRITE_SINGLE_FUNCTION) && result;
             deceleration_set_ = true;
         }
-        
+
         // Trigger movement
         result = writeSingleRegister(SLAVE_ID, TRIGGER_REG, TRIGGER_VALUE,
-                                    WRITE_SINGLE_FUNCTION) && result;
-        
+                                     WRITE_SINGLE_FUNCTION) && result;
+
         return result;
     }
 
-    bool ZXGripper::getStatus(int& torque, int& velocity, int& position) {
+    bool ZXGripper::getStatus(int& torque, int& velocity, int& position)
+    {
         std::vector<uint16_t> response = readRegisters(SLAVE_ID, STATUS_REG, 2,
-                                                      READ_FUNCTION);
-        
+                                                       READ_FUNCTION);
+
         bool success = response.size() >= 2;
-        
-        if (success) {
-            position = (static_cast<int32_t>(response[0]) << 16) | response[1];
+
+        if (success)
+        {
+            position = static_cast<int32_t>(response[0]) << 16 | response[1];
             velocity = 0;
             torque = 0;
         }
-        
+
         return success;
     }
 
-    void ZXGripper::deinitialize() {
+    void ZXGripper::deinitialize()
+    {
         acceleration_set_ = false;
         deceleration_set_ = false;
         RCLCPP_INFO(logger_, "ZX Gripper deinitialized");
     }
 
-    void ZXGripper::resetState() {
+    void ZXGripper::resetState()
+    {
         acceleration_set_ = false;
         deceleration_set_ = false;
     }
@@ -287,23 +325,25 @@ namespace marvin_ros2_control
     // ==============================================
 
     JDGripper::JDGripper(Clear485Func clear_485, Send485Func send_485)
-        : ModbusGripper(clear_485, send_485) {
+        : ModbusGripper(clear_485, send_485)
+    {
     }
 
-    bool JDGripper::initialize() {
-        
+    bool JDGripper::initialize()
+    {
         RCLCPP_INFO(logger_, "Initializing ZX Gripper (slave: 0x%02X)", SLAVE_ID);
         std::vector<uint16_t> init_value_vector = {INIT_VALUE};
         return writeMultipleRegisters(SLAVE_ID, INIT_REGISTER, init_value_vector,
-                                  WRITE_MULTIPLE_FUNCTION);
+                                      WRITE_MULTIPLE_FUNCTION);
     }
 
     /// input torque is uint8_t
     /// input velocity is uint8_t
     /// input position is uint8_t
-    bool JDGripper::move_gripper(int trq_set, int vel_set, int pos_set) {
-        RCLCPP_INFO(logger_, "ZX Gripper moving - pos: %d, vel: %d, trq: %d", 
-                   pos_set, vel_set, trq_set);
+    bool JDGripper::move_gripper(int trq_set, int vel_set, int pos_set)
+    {
+        RCLCPP_INFO(logger_, "ZX Gripper moving - pos: %d, vel: %d, trq: %d",
+                    pos_set, vel_set, trq_set);
         /// fill in data seciont
         uint16_t trigger = 0x09;
         uint16_t position = pos_set << 8;
@@ -312,27 +352,29 @@ namespace marvin_ros2_control
         position_values.push_back(trigger);
         position_values.push_back(position);
         position_values.push_back(speed_force);
-        
+
         bool result = true;
         // Write position (two registers)
-        result = writeMultipleRegisters(SLAVE_ID,POSITION_REG,position_values,
-                                       WRITE_MULTIPLE_FUNCTION);
-        
+        result = writeMultipleRegisters(SLAVE_ID, POSITION_REG, position_values,
+                                        WRITE_MULTIPLE_FUNCTION);
+
         return result;
     }
 
-    bool JDGripper::getStatus(int& torque, int& velocity, int& position) {
+    bool JDGripper::getStatus(int& /*torque*/, int& /*velocity*/, int& /*position*/)
+    {
         std::vector<uint16_t> response = readRegisters(SLAVE_ID, STATUS_REG, READ_REG_NUM,
-                                                      READ_FUNCTION);
-        
+                                                       READ_FUNCTION);
+
         bool success = true;
         // bool success = response.size() >= 2;
-        
+
         // if (success) {
         //     position = (static_cast<int32_t>(response[0]) << 16) | response[1];
         //     velocity = 0;
         //     torque = 0;
         // }
+        (void)response;  // Suppress unused variable warning
         return success;
     }
 }
